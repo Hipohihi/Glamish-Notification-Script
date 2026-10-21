@@ -25,7 +25,7 @@ export default async function handler(req, res) {
     // Query for bookings that are past their appointment time and still need cancellation
     // (You can adjust the status condition based on your workflow, e.g., 'Pending' or 'Confirmed')
     const bookingsSnapshot = await db.collection('bookings')
-      .where('status', '==', 'Pending') // or 'Confirmed' if unfulfilled
+      .where('status', '==', 'Confirmed') // or 'Confirmed' if unfulfilled
       .where('appointment_time', '<', now)
       .get();
 
