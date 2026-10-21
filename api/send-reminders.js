@@ -25,15 +25,14 @@ export default async function handler(req, res) {
   try {
     const now = new Date();
     
-    // Time windows (Checking appointments roughly 1 hour away with a buffer)
-    const oneHourFromNowStart = new Date(now.getTime() + 50 * 60000);
-    const oneHourFromNowEnd = new Date(now.getTime() + 70 * 60000);
+    // Expanded 24-hour window for testing to ensure your upcoming appointments are caught immediately
+    const twentyFourHoursLater = new Date(now.getTime() + 24 * 60 * 60000);
 
     const bookingsSnapshot = await db.collection('bookings')
-      .where('status', '==', 'Confirmed') // FIXED: Capital 'C' to match Flutter app
+      .where('status', '==', 'Confirmed') // Matches the capitalized status saved by Flutter
       .where('notified_1hr', '==', false)
-      .where('appointment_time', '>=', oneHourFromNowStart)
-      .where('appointment_time', '<=', oneHourFromNowEnd)
+      .where('appointment_time', '>=', now)
+      .where('appointment_time', '<=', twentyFourHoursLater)
       .get();
 
     let notificationCount = 0;
@@ -53,8 +52,8 @@ export default async function handler(req, res) {
       const message = {
         token: fcmToken,
         notification: {
-          title: 'Appointment in 1 Hour! ⏱️',
-          body: `Your ${booking.service_name || 'salon'} appointment starts soon. See you at Glamish!`,
+          title: 'Appointment Reminder! ⏱️',
+          body: `Your Glamish appointment is coming up soon. We look forward to seeing you!`,
         },
       };
 
