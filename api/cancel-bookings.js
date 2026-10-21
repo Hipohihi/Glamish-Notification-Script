@@ -1,51 +1,69 @@
-import { initializeApp, cert, getApps } from 'firebase-admin/app';
-import { getFirestore } from 'firebase-admin/firestore';
+const admin = require('firebase-admin');
 
-if (!getApps().length) {
-  initializeApp({
-    credential: cert({
+if (!admin.apps.length) {
+  admin.initializeApp({
+    credential: admin.credential.cert({
       projectId: process.env.FIREBASE_PROJECT_ID,
       clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+      privateKey: process.env.FIREBASE_PRIVATE_KEY
+        ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n')
+        : undefined,
     }),
   });
 }
 
-const db = getFirestore();
+const db = admin.firestore();
 
-export default async function handler(req, res) {
+module.exports = async (req, res) => {
+  // Authorization Check
   const authHeader = req.headers.authorization;
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  if (!authHeader || authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
   try {
-    const now = new Date();
+    const now = admin.firestore.Timestamp.now();
 
-    // Query for bookings that are past their appointment time and still need cancellation
-    // (You can adjust the status condition based on your workflow, e.g., 'Pending' or 'Confirmed')
-    const bookingsSnapshot = await db.collection('bookings')
-      .where('status', '==', 'Confirmed') // or 'Confirmed' if unfulfilled
+    // Query for past-due confirmed bookings
+    const snapshot = await db
+      .collection('bookings')
+      .where('status', '==', 'Confirmed')
       .where('appointment_time', '<', now)
       .get();
 
-    let cancelledCount = 0;
+    if (snapshot.empty) {
+      return res.status(200).json({ success: true, bookingsMoved: 0 });
+    }
 
     const batch = db.batch();
 
-    for (const doc of bookingsSnapshot.docs) {
+    snapshot.docs.forEach((doc) => {
+      const data = doc.data();
+      
       // Update status to Cancelled
-      batch.update(doc.ref, { status: 'Cancelled' });
-      cancelledCount++;
-    }
+      const updatedData = {
+        ...data,
+        status: 'Cancelled',
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      };
 
-    if (cancelledCount > 0) {
-      await batch.commit();
-    }
+      // 1. Copy document to finished_appointments collection
+      const finishedRef = db.collection('finished_appointments').doc(doc.id);
+      batch.set(finishedRef, updatedData);
 
-    return res.status(200).json({ success: true, bookingsCancelled: cancelledCount });
+      // 2. Delete original document from bookings collection
+      batch.delete(doc.ref);
+    });
+
+    // Commit atomic transaction
+    await batch.commit();
+
+    return res.status(200).json({
+      success: true,
+      bookingsMoved: snapshot.size,
+    });
   } catch (error) {
-    console.error('Error auto-cancelling bookings:', error);
+    console.error('Error auto-cancelling and moving bookings:', error);
     return res.status(500).json({ error: error.message });
   }
-}
+};
