@@ -25,12 +25,12 @@ export default async function handler(req, res) {
   try {
     const now = new Date();
     
-    // Time windows (Checking appointments roughly 1 hour away with a 20-minute buffer)
+    // Time windows (Checking appointments roughly 1 hour away with a buffer)
     const oneHourFromNowStart = new Date(now.getTime() + 50 * 60000);
     const oneHourFromNowEnd = new Date(now.getTime() + 70 * 60000);
 
     const bookingsSnapshot = await db.collection('bookings')
-      .where('status', '==', 'confirmed')
+      .where('status', '==', 'Confirmed') // FIXED: Capital 'C' to match Flutter app
       .where('notified_1hr', '==', false)
       .where('appointment_time', '>=', oneHourFromNowStart)
       .where('appointment_time', '<=', oneHourFromNowEnd)
@@ -40,7 +40,9 @@ export default async function handler(req, res) {
 
     for (const doc of bookingsSnapshot.docs) {
       const booking = doc.data();
-      const clientId = booking.client_id;
+      const clientId = booking.userId; // FIXED: Changed from client_id to userId
+
+      if (!clientId) continue;
 
       const userDoc = await db.collection('users').doc(clientId).get();
       if (!userDoc.exists) continue;
