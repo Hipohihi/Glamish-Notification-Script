@@ -23,13 +23,18 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Fetch all unnotified confirmed bookings
+    const now = new Date();
+    // Exactly 1-hour window for production reminders
+    const oneHourLater = new Date(now.getTime() + 60 * 60000);
+
     const bookingsSnapshot = await db.collection('bookings')
       .where('status', '==', 'Confirmed')
       .where('notified_1hr', '==', false)
+      .where('appointment_time', '>=', now)
+      .where('appointment_time', '<=', oneHourLater)
       .get();
 
-    console.log(`Found ${bookingsSnapshot.docs.length} unnotified bookings.`);
+    console.log(`Found ${bookingsSnapshot.docs.length} bookings needing 1-hour reminders.`);
 
     let notificationCount = 0;
 
@@ -37,22 +42,13 @@ export default async function handler(req, res) {
       const booking = doc.data();
       const clientId = booking.userId;
 
-      if (!clientId) {
-        console.log(`Booking ${doc.id} skipped: Missing userId`);
-        continue;
-      }
+      if (!clientId) continue;
 
       const userDoc = await db.collection('users').doc(clientId).get();
-      if (!userDoc.exists) {
-        console.log(`Booking ${doc.id} skipped: User doc ${clientId} not found`);
-        continue;
-      }
+      if (!userDoc.exists) continue;
       
       const fcmToken = userDoc.data().fcm_token;
-      if (!fcmToken) {
-        console.log(`Booking ${doc.id} skipped: User ${clientId} has no fcm_token`);
-        continue;
-      }
+      if (!fcmToken) continue;
 
       const message = {
         token: fcmToken,
