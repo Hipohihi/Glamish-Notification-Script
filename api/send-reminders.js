@@ -2,6 +2,7 @@ import { initializeApp, cert, getApps } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { getMessaging } from 'firebase-admin/messaging';
 
+// Initialize Firebase Admin
 if (!getApps().length) {
   initializeApp({
     credential: cert({
@@ -22,11 +23,14 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Fetch all unnotified confirmed bookings to test if the query picks up the document at all
+    // Fetch all unnotified confirmed bookings to test query results
     const bookingsSnapshot = await db.collection('bookings')
       .where('status', '==', 'Confirmed')
       .where('notified_1hr', '==', false)
       .get();
+
+    // DEBUG LOG: Check Vercel logs to see what this outputs
+    console.log(`Found ${bookingsSnapshot.docs.length} unnotified bookings.`);
 
     let notificationCount = 0;
 
