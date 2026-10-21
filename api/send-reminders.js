@@ -23,13 +23,12 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Fetch all unnotified confirmed bookings to test query results
+    // Fetch all unnotified confirmed bookings
     const bookingsSnapshot = await db.collection('bookings')
       .where('status', '==', 'Confirmed')
       .where('notified_1hr', '==', false)
       .get();
 
-    // DEBUG LOG: Check Vercel logs to see what this outputs
     console.log(`Found ${bookingsSnapshot.docs.length} unnotified bookings.`);
 
     let notificationCount = 0;
@@ -38,13 +37,22 @@ export default async function handler(req, res) {
       const booking = doc.data();
       const clientId = booking.userId;
 
-      if (!clientId) continue;
+      if (!clientId) {
+        console.log(`Booking ${doc.id} skipped: Missing userId`);
+        continue;
+      }
 
       const userDoc = await db.collection('users').doc(clientId).get();
-      if (!userDoc.exists) continue;
+      if (!userDoc.exists) {
+        console.log(`Booking ${doc.id} skipped: User doc ${clientId} not found`);
+        continue;
+      }
       
       const fcmToken = userDoc.data().fcm_token;
-      if (!fcmToken) continue;
+      if (!fcmToken) {
+        console.log(`Booking ${doc.id} skipped: User ${clientId} has no fcm_token`);
+        continue;
+      }
 
       const message = {
         token: fcmToken,
