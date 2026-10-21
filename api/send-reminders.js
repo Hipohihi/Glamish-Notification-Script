@@ -2,7 +2,6 @@ import { initializeApp, cert, getApps } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { getMessaging } from 'firebase-admin/messaging';
 
-// Initialize Firebase Admin
 if (!getApps().length) {
   initializeApp({
     credential: cert({
@@ -23,23 +22,17 @@ export default async function handler(req, res) {
   }
 
   try {
-    const now = new Date();
-    
-    // Expanded 24-hour window for testing to ensure your upcoming appointments are caught immediately
-    const twentyFourHoursLater = new Date(now.getTime() + 24 * 60 * 60000);
-
+    // Fetch all unnotified confirmed bookings to test if the query picks up the document at all
     const bookingsSnapshot = await db.collection('bookings')
-      .where('status', '==', 'Confirmed') // Matches the capitalized status saved by Flutter
+      .where('status', '==', 'Confirmed')
       .where('notified_1hr', '==', false)
-      .where('appointment_time', '>=', now)
-      .where('appointment_time', '<=', twentyFourHoursLater)
       .get();
 
     let notificationCount = 0;
 
     for (const doc of bookingsSnapshot.docs) {
       const booking = doc.data();
-      const clientId = booking.userId; // FIXED: Changed from client_id to userId
+      const clientId = booking.userId;
 
       if (!clientId) continue;
 
