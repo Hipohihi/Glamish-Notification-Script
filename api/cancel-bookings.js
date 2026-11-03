@@ -15,52 +15,71 @@ if (!admin.apps.length) {
 const db = admin.firestore();
 
 module.exports = async (req, res) => {
-  // Authorization Check
   const authHeader = req.headers.authorization;
   if (!authHeader || authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
   try {
-    const now = admin.firestore.Timestamp.now();
+    const now = new Date();
+    console.log('Server Current Time (UTC):', now.toISOString());
 
-    // Query for past-due confirmed bookings
     const snapshot = await db
       .collection('bookings')
       .where('status', '==', 'Confirmed')
-      .where('appointment_time', '<', now)
       .get();
 
+    console.log(`Total 'Confirmed' bookings found in DB: ${snapshot.size}`);
+
     if (snapshot.empty) {
-      return res.status(200).json({ success: true, bookingsMoved: 0 });
+      return res.status(200).json({ success: true, bookingsMoved: 0, debug: 'No confirmed bookings found' });
     }
 
     const batch = db.batch();
+    let movedCount = 0;
+    let debugInfo = [];
 
     snapshot.docs.forEach((doc) => {
       const data = doc.data();
-      
-      // Update status to Cancelled
-      const updatedData = {
-        ...data,
-        status: 'Cancelled',
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      };
+      let appointmentDate = null;
 
-      // 1. Copy document to finished_appointments collection
-      const finishedRef = db.collection('finished_appointments').doc(doc.id);
-      batch.set(finishedRef, updatedData);
+      const rawTimeField = data['appointment_time'] || data['appointmentTimestamp'];
 
-      // 2. Delete original document from bookings collection
-      batch.delete(doc.ref);
+      if (rawTimeField && typeof rawTimeField.toDate === 'function') {
+        appointmentDate = rawTimeField.toDate();
+      } else if (rawTimeField) {
+        appointmentDate = new Date(rawTimeField);
+      }
+
+      debugInfo.push({
+        id: doc.id,
+        client: data['clientName'],
+        parsedTime: appointmentDate ? appointmentDate.toISOString() : 'INVALID',
+        isPast: appointmentDate ? appointmentDate < now : false
+      });
+
+      if (appointmentDate && appointmentDate < now) {
+        const updatedData = {
+          ...data,
+          status: 'Cancelled',
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        };
+
+        const finishedRef = db.collection('finished_appointments').doc(doc.id);
+        batch.set(finishedRef, updatedData);
+        batch.delete(doc.ref);
+        movedCount++;
+      }
     });
 
-    // Commit atomic transaction
-    await batch.commit();
+    if (movedCount > 0) {
+      await batch.commit();
+    }
 
     return res.status(200).json({
       success: true,
-      bookingsMoved: snapshot.size,
+      bookingsMoved: movedCount,
+      evaluatedBookings: debugInfo
     });
   } catch (error) {
     console.error('Error auto-cancelling and moving bookings:', error);
