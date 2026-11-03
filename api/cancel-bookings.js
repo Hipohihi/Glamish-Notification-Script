@@ -21,15 +21,13 @@ module.exports = async (req, res) => {
   }
 
   try {
-    const now = new Date();
-    console.log('Server Current Time (UTC):', now.toISOString());
+    // Get current time localized to Philippine Standard Time (Asia/Manila)
+    const nowPHT = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Manila" }));
 
     const snapshot = await db
       .collection('bookings')
       .where('status', '==', 'Confirmed')
       .get();
-
-    console.log(`Total 'Confirmed' bookings found in DB: ${snapshot.size}`);
 
     if (snapshot.empty) {
       return res.status(200).json({ success: true, bookingsMoved: 0, debug: 'No confirmed bookings found' });
@@ -46,19 +44,25 @@ module.exports = async (req, res) => {
       const rawTimeField = data['appointment_time'] || data['appointmentTimestamp'];
 
       if (rawTimeField && typeof rawTimeField.toDate === 'function') {
-        appointmentDate = rawTimeField.toDate();
+        const utcDate = rawTimeField.toDate();
+        // Convert stored timestamp to local PHT wall-clock comparison
+        appointmentDate = new Date(utcDate.toLocaleString("en-US", { timeZone: "Asia/Manila" }));
       } else if (rawTimeField) {
-        appointmentDate = new Date(rawTimeField);
+        const parsed = new Date(rawTimeField);
+        appointmentDate = new Date(parsed.toLocaleString("en-US", { timeZone: "Asia/Manila" }));
       }
+
+      const isPast = appointmentDate ? appointmentDate < nowPHT : false;
 
       debugInfo.push({
         id: doc.id,
         client: data['clientName'],
-        parsedTime: appointmentDate ? appointmentDate.toISOString() : 'INVALID',
-        isPast: appointmentDate ? appointmentDate < now : false
+        appointmentPHT: appointmentDate ? appointmentDate.toISOString() : 'INVALID',
+        currentPHT: nowPHT.toISOString(),
+        isPast: isPast
       });
 
-      if (appointmentDate && appointmentDate < now) {
+      if (appointmentDate && isPast) {
         const updatedData = {
           ...data,
           status: 'Cancelled',
