@@ -23,21 +23,18 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Get current local date components (adjusting for your salon's timezone if needed)
-    const now = new Date();
+    // Force evaluation in Manila timezone to bypass Vercel UTC server offsets
+    const nowInManila = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
     
-    // Format current date as YYYY-MM-DD to match your dateString field
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
+    const year = nowInManila.getFullYear();
+    const month = String(nowInManila.getMonth() + 1).padStart(2, '0');
+    const day = String(nowInManila.getDate()).padStart(2, '0');
     const currentDateString = `${year}-${month}-${day}`;
 
-    // Current hour (e.g., 10 for 10:00 AM)
-    const currentHour = now.getHours();
-    // Target hour is 1 hour ahead
+    const currentHour = nowInManila.getHours();
     const targetHour = currentHour + 1;
 
-    console.log(`Checking bookings for date: ${currentDateString} at startHour: ${targetHour}`);
+    console.log(`Checking bookings for date: ${currentDateString} at startHour: ${targetHour} (Manila Time)`);
 
     const bookingsSnapshot = await db.collection('bookings')
       .where('status', '==', 'Confirmed')
