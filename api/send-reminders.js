@@ -23,15 +23,27 @@ export default async function handler(req, res) {
   }
 
   try {
+    // Get current local date components (adjusting for your salon's timezone if needed)
     const now = new Date();
-    // Exactly 1-hour window for production reminders
-    const oneHourLater = new Date(now.getTime() + 60 * 60000);
+    
+    // Format current date as YYYY-MM-DD to match your dateString field
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const currentDateString = `${year}-${month}-${day}`;
+
+    // Current hour (e.g., 10 for 10:00 AM)
+    const currentHour = now.getHours();
+    // Target hour is 1 hour ahead
+    const targetHour = currentHour + 1;
+
+    console.log(`Checking bookings for date: ${currentDateString} at startHour: ${targetHour}`);
 
     const bookingsSnapshot = await db.collection('bookings')
       .where('status', '==', 'Confirmed')
       .where('notified_1hr', '==', false)
-      .where('appointment_time', '>=', now)
-      .where('appointment_time', '<=', oneHourLater)
+      .where('dateString', '==', currentDateString)
+      .where('startHour', '==', targetHour)
       .get();
 
     console.log(`Found ${bookingsSnapshot.docs.length} bookings needing 1-hour reminders.`);
